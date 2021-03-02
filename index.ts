@@ -1,5 +1,5 @@
-import express from 'express';
 import bodyParser from 'body-parser';
+import express from 'express';
 
 const app = express();
 
@@ -11,11 +11,21 @@ type Guest = {
   lastName: string;
   deadline?: string;
   attending: boolean;
+  eventId: string;
+};
+
+type Event = {
+  eventId: string;
+  eventName: string;
+  eventLocation: string;
+  guestList: Guest[];
 };
 
 let id = 1;
+let eventId = 1;
 
 const guestList: Guest[] = [];
+const eventList: Event[] = [];
 
 // Enable CORS
 app.use(function (_req, res, next) {
@@ -24,13 +34,90 @@ app.use(function (_req, res, next) {
     'Access-Control-Allow-Headers',
     'Origin, X-Requested-With, Content-Type, Accept',
   );
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  res.header(
+    'Access-Control-Allow-Methods',
+    'GET, POST, PATCH, DELETE, OPTIONS',
+  );
   next();
 });
 
 // Get all guests
-app.get('/', function (_req, res) {
-  res.json(guestList);
+app.get('/event/:id/guest-list', function (_req, res) {
+  const event = eventList.find(
+    (currentEvent) => currentEvent.eventId === _req.params.id,
+  );
+
+  if (!event) {
+    res
+      .status(404)
+      .json({ errors: [{ message: `Event ${_req.params.id} not found` }] });
+    return;
+  }
+
+  res.json(event.guestList);
+});
+
+// Get all events
+
+app.get('/event', function (_req, res) {
+  res.json(eventList);
+});
+
+// New event
+
+app.post('/event', function (req, res) {
+  if (!req.body.eventName || !req.body.eventLocation) {
+    res.status(400).json({
+      errors: [
+        {
+          message:
+            'Request body missing an eventName or eventLocation property',
+        },
+      ],
+    });
+    return;
+  }
+
+  if (Object.keys(req.body).length > 2) {
+    res.status(400).json({
+      errors: [
+        {
+          message:
+            'Request body contains more than eventName and eventLocation',
+        },
+      ],
+    });
+    return;
+  }
+
+  const event = {
+    eventId: String(eventId++),
+    eventName: req.body.eventName,
+    eventLocation: req.body.eventLocation,
+    guestList: [],
+  };
+
+  eventList.push(event);
+
+  res.json(event);
+});
+
+// Delete event
+
+app.delete('/event/:eventId', function (req, res) {
+  const event = eventList.find(
+    (currentEvent) => currentEvent.eventId === String(req.params.eventId),
+  );
+
+  if (!event) {
+    res
+      .status(404)
+      .json({ errors: [{ message: `Event ${req.params.eventId} not found` }] });
+    return;
+  }
+
+  eventList.splice(eventList.indexOf(event), 1);
+  res.json(event);
 });
 
 // New guest
@@ -62,15 +149,20 @@ app.post('/', function (req, res) {
     lastName: req.body.lastName,
     ...(req.body.deadline ? { deadline: req.body.deadline } : {}),
     attending: false,
+    eventId: req.body.eventId,
   };
 
-  guestList.push(guest);
+  eventList.forEach((event) => {
+    if (event.eventId === req.body.eventId) {
+      return event.guestList.push(guest);
+    }
+  });
 
   res.json(guest);
 });
 
 // Modify a single guest
-app.patch('/:id', function (req, res) {
+app.patch('/event/:eventId/guest/:id', function (req, res) {
   const allowedKeys = ['firstName', 'lastName', 'deadline', 'attending'];
   const difference = Object.keys(req.body).filter(
     (key) => !allowedKeys.includes(key),
@@ -91,7 +183,17 @@ app.patch('/:id', function (req, res) {
     return;
   }
 
-  const guest = guestList.find(
+  const event = eventList.find(
+    (currentEvent) => currentEvent.eventId === req.params.eventId,
+  );
+  if (!event) {
+    res
+      .status(404)
+      .json({ errors: [{ message: `Event ${req.params.eventId} not found` }] });
+    return;
+  }
+
+  const guest = event.guestList.find(
     (currentGuest) => currentGuest.id === req.params.id,
   );
 
@@ -110,8 +212,18 @@ app.patch('/:id', function (req, res) {
 });
 
 // Delete a single guest
-app.delete('/:id', function (req, res) {
-  const guest = guestList.find(
+app.delete('/event/:eventId/guest/:id', function (req, res) {
+  const event = eventList.find(
+    (currentEvent) => currentEvent.eventId === req.params.eventId,
+  );
+  if (!event) {
+    res
+      .status(404)
+      .json({ errors: [{ message: `Event ${req.params.eventId} not found` }] });
+    return;
+  }
+
+  const guest = event.guestList.find(
     (currentGuest) => currentGuest.id === req.params.id,
   );
 
@@ -122,7 +234,7 @@ app.delete('/:id', function (req, res) {
     return;
   }
 
-  guestList.splice(guestList.indexOf(guest), 1);
+  event.guestList.splice(event.guestList.indexOf(guest), 1);
   res.json(guest);
 });
 
